@@ -59,6 +59,8 @@ def yesly_webhook():
 Pass the raw body. Deliveries more than five minutes old are rejected, and
 either signature is accepted during a secret roll. `generate_test_header` signs
 a payload to test your handler.
+A delivery can arrive more than once, and a captured one stays valid for
+those five minutes, so skip events whose `id` you have already handled.
 
 ## Lists
 

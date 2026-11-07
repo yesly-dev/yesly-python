@@ -51,3 +51,8 @@ def test_webhook_class_as_on_the_website():
     assert Webhook.construct_event(BODY.encode(), f"t={NOW},v1={sign(SECRET)}", SECRET, now=NOW)["id"] == "evt_1"
     with pytest.raises(SignatureVerificationError):
         Webhook.construct_event(BODY, "", SECRET)
+
+
+def test_non_ascii_signature_is_rejected_not_a_type_error():
+    with pytest.raises(yesly.SignatureVerificationError):
+        construct_event(BODY, f"t={NOW},v1=é{sign(SECRET)[1:]}", SECRET, now=NOW)

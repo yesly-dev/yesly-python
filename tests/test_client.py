@@ -117,3 +117,10 @@ def test_every_resource_is_attached(client):
     for name in ["appointments", "imports", "slots", "appointment_types", "locations", "webhook_endpoints", "events", "balance", "analytics"]:
         assert getattr(client, name) is not None
     assert callable(client.appointments.import_)
+
+
+def test_base_url_must_be_https_except_for_localhost():
+    with pytest.raises(yesly.YeslyError, match="must use https"):
+        yesly.Yesly("ysk_test_123", base_url="http://api.yesly.dev/v1")
+    for base_url in ("http://localhost:4010", "http://127.0.0.1:4010/v1", "http://[::1]:4010"):
+        assert yesly.Yesly("ysk_test_123", base_url=base_url).base_url == base_url

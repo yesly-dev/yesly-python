@@ -46,8 +46,9 @@ def verify_signature(
     if tolerance > 0 and abs(current - timestamp) > tolerance:
         raise SignatureVerificationError("The Yesly-Signature timestamp is outside the tolerance.")
     body = payload.encode("utf-8") if isinstance(payload, str) else payload
-    expected = hmac.new(secret.encode("utf-8"), f"{timestamp}.".encode("utf-8") + body, hashlib.sha256).hexdigest()
-    if not any(hmac.compare_digest(expected, s) for s in signatures):
+    expected = hmac.new(secret.encode("utf-8"), f"{timestamp}.".encode("utf-8") + body, hashlib.sha256).hexdigest().encode("ascii")
+    # Compared as bytes: compare_digest raises TypeError on a str with non-ASCII characters.
+    if not any(hmac.compare_digest(expected, s.encode("utf-8")) for s in signatures):
         raise SignatureVerificationError("No signature in Yesly-Signature matches the payload.")
 
 

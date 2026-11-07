@@ -5,6 +5,7 @@ import random
 import time
 import uuid
 from types import ModuleType
+from urllib.parse import urlsplit
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 import httpx
@@ -43,7 +44,7 @@ class Yesly(Resources):
         http_client: Optional[httpx.Client] = None,
     ) -> None:
         self.api_key = api_key or os.environ.get("YESLY_API_KEY") or None
-        self.base_url = (base_url or os.environ.get("YESLY_BASE_URL") or BASE_URL).rstrip("/")
+        self.base_url = _check_base_url((base_url or os.environ.get("YESLY_BASE_URL") or BASE_URL).rstrip("/"))
         self.api_version = api_version or API_VERSION
         self.timeout = timeout
         self.max_retries = max_retries
@@ -126,6 +127,20 @@ class Yesly(Resources):
             return self._request(method, path, query={**(query or {}), "starting_after": last_id}, paged=True)  # type: ignore[no-any-return]
 
         return Page(data, fetch_after)
+
+
+def _check_base_url(base_url: str) -> str:
+    """The API key goes in every request, so the base URL must be HTTPS; plain HTTP only to this machine."""
+    try:
+        url = urlsplit(base_url)
+        host = url.hostname
+    except ValueError:
+        raise YeslyError("The base URL is not a valid URL.") from None
+    if url.scheme == "https" and host:
+        return base_url
+    if url.scheme == "http" and host in ("localhost", "127.0.0.1", "::1"):
+        return base_url
+    raise YeslyError("The base URL must use https:// (http:// is only allowed for localhost).")
 
 
 def _flatten(query: Dict[str, Any]) -> List[Tuple[str, str]]:
