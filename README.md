@@ -2,8 +2,7 @@
 
 The official Python library for the Yesly API.
 
-> Status: 0.1.0, not published yet. Covers API version `2026-10-01`. How to
-> publish it: [docs/publishing.md](docs/publishing.md).
+> Status: 0.1.0, not published yet. Covers API version `2026-10-01`.
 
 ## Install
 
@@ -89,7 +88,7 @@ reused on every retry; pass your own with `idempotency_key=`. Creating an
 appointment is idempotent by `external_id` instead.
 
 ```python
-Yesly(api_key=…, timeout=10.0, max_retries=4, base_url="https://api.dev.yesly.dev/v1")
+Yesly(api_key=…, timeout=10.0, max_retries=4)
 yesly.appointments.cancel("apt_…", reason="Shop closed", idempotency_key="cancel-ORD-48213")
 ```
 
@@ -116,10 +115,9 @@ node ../yesly-openapi/sdk/generate.mjs python .
 Smoke test against the real API with a test key:
 
 ```bash
-YESLY_API_KEY=ysk_test_… YESLY_BASE_URL=https://api.dev.yesly.dev/v1 uv run python scripts/smoke.py
+YESLY_API_KEY=ysk_test_… uv run python scripts/smoke.py
 ```
 
 ## Releasing
 
-Bump `src/yesly/_version.py`, then push a tag `v<version>`. First-time
-registration on PyPI: [docs/publishing.md](docs/publishing.md).
+Bump `src/yesly/_version.py`, then push a tag `v<version>`.
