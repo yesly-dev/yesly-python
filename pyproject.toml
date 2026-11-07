@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "yesly"
+dynamic = ["version"]
+description = "Official Python library for the Yesly API"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [{ name = "Yesly" }]
+dependencies = [
+  "httpx>=0.27,<1",
+  "typing-extensions>=4.7",
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+  "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://yesly.dev"
+Source = "https://github.com/yesly-dev/yesly-python"
+
+[dependency-groups]
+dev = ["pytest>=8", "mypy>=1.10"]
+
+[tool.hatch.version]
+path = "src/yesly/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/yesly"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+strict = true
+files = ["src/yesly"]

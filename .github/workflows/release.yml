@@ -1,0 +1,38 @@
+# Publishes to PyPI when a tag such as v0.1.0 is pushed. Uses PyPI trusted
+# publishing (OIDC), so no token is stored: see docs/publishing.md.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - name: Check the tag matches the version
+        run: test "v$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/yesly/_version.py)" = "$GITHUB_REF_NAME"
+      - run: uv run --python 3.13 --group dev pytest
+      - run: uv build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
