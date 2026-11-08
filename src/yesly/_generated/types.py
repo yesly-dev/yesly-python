@@ -400,6 +400,19 @@ TimeFormat = Literal["window", "exact"]
 Place = Literal["customer", "location"]
 
 
+class FirstContact0(TypedDict, total=False):
+    days_before: Required[int]
+    at: Required[str]
+
+
+class FirstContact1(TypedDict, total=False):
+    hours_before: Required[int]
+
+
+# When the first message goes out for appointments of a type: `days_before` and `at` ("the day before at 10:00", `0` for the same day), or `hours_before` (same-day services: "3 hours before"). Moved into your contact hours when it falls outside them.
+FirstContact = Union["FirstContact0", "FirstContact1"]
+
+
 class AppointmentType(TypedDict, total=False):
     "What an appointment is. Sets how the time is shown and the instructions added to the message."
 
@@ -416,6 +429,8 @@ class AppointmentType(TypedDict, total=False):
     instructions: Required[Union[str, None]]
     # Whether the customer may ask for another date.
     reschedulable: Required[bool]
+    # When the first message goes out for this type, or `null` to use your account's setting.
+    first_contact: Required[Union["FirstContact", None]]
     created: Required[str]
 
 
@@ -431,6 +446,8 @@ class AppointmentTypeCreate(TypedDict, total=False):
     # Optional instructions for the customer.
     instructions: str
     reschedulable: bool
+    # Its own first message. Leave it out (or `null`) to use your account's setting.
+    first_contact: Union["FirstContact", None]
 
 
 class AppointmentTypeUpdate(TypedDict, total=False):
@@ -442,6 +459,8 @@ class AppointmentTypeUpdate(TypedDict, total=False):
     instructions: str
     # Whether the customer may ask for another date.
     reschedulable: bool
+    # Its own first message; `null` goes back to your account's setting.
+    first_contact: Union["FirstContact", None]
 
 
 class AppointmentTypeList(TypedDict, total=False):
