@@ -198,6 +198,7 @@ class AppointmentTypes(Resource):
         place: t.Place,
         instructions: Union[str, NotGiven] = NOT_GIVEN,
         reschedulable: Union[bool, NotGiven] = NOT_GIVEN,
+        cancellable: Union[bool, NotGiven] = NOT_GIVEN,
         first_contact: Union[Union[t.FirstContact, None], NotGiven] = NOT_GIVEN,
         idempotency_key: Optional[str] = None,
     ) -> t.AppointmentType:
@@ -207,7 +208,7 @@ class AppointmentTypes(Resource):
 
         ``POST /appointment_types``
         """
-        return self._client._request("POST", "/appointment_types", body={"id": id, "name": name, "time_format": time_format, "minutes": minutes, "place": place, "instructions": instructions, "reschedulable": reschedulable, "first_contact": first_contact}, idempotent=True, idempotency_key=idempotency_key)  # type: ignore[no-any-return]
+        return self._client._request("POST", "/appointment_types", body={"id": id, "name": name, "time_format": time_format, "minutes": minutes, "place": place, "instructions": instructions, "reschedulable": reschedulable, "cancellable": cancellable, "first_contact": first_contact}, idempotent=True, idempotency_key=idempotency_key)  # type: ignore[no-any-return]
 
     def update(
         self,
@@ -217,6 +218,7 @@ class AppointmentTypes(Resource):
         minutes: Union[int, NotGiven] = NOT_GIVEN,
         instructions: Union[str, NotGiven] = NOT_GIVEN,
         reschedulable: Union[bool, NotGiven] = NOT_GIVEN,
+        cancellable: Union[bool, NotGiven] = NOT_GIVEN,
         first_contact: Union[Union[t.FirstContact, None], NotGiven] = NOT_GIVEN,
     ) -> t.AppointmentType:
         """Update an appointment type.
@@ -225,7 +227,7 @@ class AppointmentTypes(Resource):
 
         ``PATCH /appointment_types/{id}``
         """
-        return self._client._request("PATCH", f"/appointment_types/{_quote(id)}", body={"name": name, "minutes": minutes, "instructions": instructions, "reschedulable": reschedulable, "first_contact": first_contact})  # type: ignore[no-any-return]
+        return self._client._request("PATCH", f"/appointment_types/{_quote(id)}", body={"name": name, "minutes": minutes, "instructions": instructions, "reschedulable": reschedulable, "cancellable": cancellable, "first_contact": first_contact})  # type: ignore[no-any-return]
 
 
 class Locations(Resource):

@@ -429,6 +429,8 @@ class AppointmentType(TypedDict, total=False):
     instructions: Required[Union[str, None]]
     # Whether the customer may ask for another date.
     reschedulable: Required[bool]
+    # Whether the customer may cancel. Off for deliveries such as a parcel or a mattress; then a "no" asks for another day (if reschedulable) or goes to your team.
+    cancellable: Required[bool]
     # When the first message goes out for this type, or `null` to use your account's setting.
     first_contact: Required[Union["FirstContact", None]]
     created: Required[str]
@@ -446,6 +448,7 @@ class AppointmentTypeCreate(TypedDict, total=False):
     # Optional instructions for the customer.
     instructions: str
     reschedulable: bool
+    cancellable: bool
     # Its own first message. Leave it out (or `null`) to use your account's setting.
     first_contact: Union["FirstContact", None]
 
@@ -459,6 +462,8 @@ class AppointmentTypeUpdate(TypedDict, total=False):
     instructions: str
     # Whether the customer may ask for another date.
     reschedulable: bool
+    # Whether the customer may cancel.
+    cancellable: bool
     # Its own first message; `null` goes back to your account's setting.
     first_contact: Union["FirstContact", None]
 
