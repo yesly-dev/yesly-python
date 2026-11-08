@@ -121,6 +121,19 @@ class Attempt(TypedDict, total=False):
     sent_at: Required[str]
     # Cost of this attempt, in euros.
     cost: Required[float]
+    # Calls only: what the call said and what it heard, in order. A customer turn has the recognised speech in `text` (empty for a silence) or the key pressed in `key`. Kept with the appointment and deleted with it.
+    transcript: List["TranscriptLine"]
+
+
+class TranscriptLine(TypedDict, total=False):
+    "One turn of a call."
+
+    speaker: Required[Literal["agent", "customer"]]
+    # What was said. `null` when the customer pressed a key.
+    text: Required[Union[str, None]]
+    # The key the customer pressed, such as `1`.
+    key: Required[Union[str, None]]
+    at: Required[str]
 
 
 class Appointment(TypedDict, total=False):
