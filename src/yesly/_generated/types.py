@@ -14,6 +14,7 @@ EVENT_TYPES = (
     "appointment.created",
     "appointment.confirmed",
     "appointment.rescheduled",
+    "appointment.reschedule_requested",
     "appointment.cancelled",
     "appointment.no_reply",
     "message.sent",
@@ -74,8 +75,8 @@ class Error(TypedDict, total=False):
     error: Required["ErrorError"]
 
 
-# - `scheduled`: created, waiting for `first_contact_at`. - `in_progress`: Yesly is contacting the customer. - `confirmed`: the customer will be there. - `rescheduled`: the customer moved it to one of your free slots. - `cancelled`: cancelled by the customer or by you. - `no_reply`: no answer on any channel. Your team should call.
-AppointmentStatus = Literal["scheduled", "in_progress", "confirmed", "rescheduled", "cancelled", "no_reply"]
+# - `scheduled`: created, waiting for `first_contact_at`. - `in_progress`: Yesly is contacting the customer. - `confirmed`: the customer will be there. - `rescheduled`: the customer moved it to one of your free slots. - `reschedule_requested`: the customer wants another day and there was no free slot that suited them; `reschedule_request` says which days and when. Set the new `slot` and confirmation starts again. - `cancelled`: cancelled by the customer or by you. - `no_reply`: no answer on any channel. Your team should call.
+AppointmentStatus = Literal["scheduled", "in_progress", "confirmed", "rescheduled", "reschedule_requested", "cancelled", "no_reply"]
 
 
 class AppointmentSlot(TypedDict, total=False):
@@ -98,8 +99,19 @@ class Customer(TypedDict, total=False):
 class Answer(TypedDict, total=False):
     "The customer's answer."
 
-    result: Required[Literal["confirmed", "rescheduled", "cancelled"]]
+    result: Required[Literal["confirmed", "rescheduled", "reschedule_requested", "cancelled"]]
     channel: Required["Channel"]
+    at: Required[str]
+
+
+class RescheduleRequest(TypedDict, total=False):
+    "The customer's wish when there was no free slot to pick, or none suited them."
+
+    # Up to 3 days that would suit them (`YYYY-MM-DD`, in your time zone). Empty when they just asked for another day.
+    dates: Required[List[str]]
+    part_of_day: Required[Literal["morning", "afternoon", "any"]]
+    # Anything else they wrote, up to 300 characters.
+    note: Required[Union[str, None]]
     at: Required[str]
 
 
@@ -160,6 +172,8 @@ class Appointment(TypedDict, total=False):
     first_contact_at: Required[Union[str, None]]
     # The customer's answer, or `null`.
     answer: Required[Union["Answer", None]]
+    # What the customer would like instead, when they asked for another day without picking a slot, or `null`.
+    reschedule_request: Required[Union["RescheduleRequest", None]]
     # Who cancelled, why and when, or `null`.
     cancellation: Required[Union["Cancellation", None]]
     # Each contact attempt.
@@ -426,8 +440,8 @@ class LocationList(TypedDict, total=False):
     data: Required[List["Location"]]
 
 
-# - `appointment.created`: created by API, import, CSV or in the dashboard. - `appointment.confirmed`: the customer confirmed. - `appointment.rescheduled`: the customer moved it to another slot. - `appointment.cancelled`: cancelled by the customer or by you. - `appointment.no_reply`: no channel got an answer. - `message.sent`: a WhatsApp message or SMS left Yesly. - `message.delivered`: the carrier or WhatsApp confirmed delivery. - `message.failed`: it could not be delivered; the next channel runs. - `call.started`: a call started ringing. - `call.completed`: a call ended, with its duration and outcome. - `call.transferred`: the call was passed to the location's phone. - `balance.low`: the balance went below your alert threshold. - `balance.topped_up`: a top-up was paid.
-EventType = Literal["appointment.created", "appointment.confirmed", "appointment.rescheduled", "appointment.cancelled", "appointment.no_reply", "message.sent", "message.delivered", "message.failed", "call.started", "call.completed", "call.transferred", "balance.low", "balance.topped_up"]
+# - `appointment.created`: created by API, import, CSV or in the dashboard. - `appointment.confirmed`: the customer confirmed. - `appointment.rescheduled`: the customer moved it to another slot. - `appointment.reschedule_requested`: the customer asked for another day; set the new slot. - `appointment.cancelled`: cancelled by the customer or by you. - `appointment.no_reply`: no channel got an answer. - `message.sent`: a WhatsApp message or SMS left Yesly. - `message.delivered`: the carrier or WhatsApp confirmed delivery. - `message.failed`: it could not be delivered; the next channel runs. - `call.started`: a call started ringing. - `call.completed`: a call ended, with its duration and outcome. - `call.transferred`: the call was passed to the location's phone. - `balance.low`: the balance went below your alert threshold. - `balance.topped_up`: a top-up was paid.
+EventType = Literal["appointment.created", "appointment.confirmed", "appointment.rescheduled", "appointment.reschedule_requested", "appointment.cancelled", "appointment.no_reply", "message.sent", "message.delivered", "message.failed", "call.started", "call.completed", "call.transferred", "balance.low", "balance.topped_up"]
 
 
 class EventBase(TypedDict, total=False):
@@ -724,6 +738,7 @@ class AnalyticsSummaryOutcomes(TypedDict, total=False):
 
     confirmed: int
     rescheduled: int
+    reschedule_requested: int
     cancelled: int
     no_reply: int
     in_progress: int
