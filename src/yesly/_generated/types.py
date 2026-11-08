@@ -38,8 +38,8 @@ Phone = str
 DateOrDateTime = str
 
 
-# Contact channel.
-Channel = Literal["whatsapp", "sms", "voice"]
+# Contact channel. `email` needs `customer.email` on the appointment; without it the step is skipped.
+Channel = Literal["whatsapp", "sms", "voice", "email"]
 
 
 # Your own key-value pairs, returned unchanged. Up to 20 keys, keys up to 40 characters, values up to 500 characters, strings only. Do not put personal data here.
@@ -91,6 +91,8 @@ class Customer(TypedDict, total=False):
     # Name used in the messages. A first name is enough.
     name: Required[str]
     phone: Required["Phone"]
+    # Email for the `email` channel, lower-cased. `null` when there is none.
+    email: Union[str, None]
 
 
 class Answer(TypedDict, total=False):
@@ -149,7 +151,7 @@ class Appointment(TypedDict, total=False):
     cancellation: Required[Union["Cancellation", None]]
     # Each contact attempt.
     attempts: Required[List["Attempt"]]
-    # What this appointment has cost so far, in euros. WhatsApp 0.08 per message, SMS 0.15 per message, voice 0.30 per answered minute; unanswered calls are free.
+    # What this appointment has cost so far, in euros. WhatsApp 0.08 per message, SMS 0.15 per message, email 0.01 per message, voice 0.30 per answered minute; unanswered calls are free.
     cost: Required[float]
     # Currency of `cost`.
     currency: Required[str]
@@ -171,6 +173,8 @@ class AppointmentCreateCustomer(TypedDict, total=False):
     # Name used in the messages. A first name is enough.
     name: Required[str]
     phone: Required["Phone"]
+    # Email for the `email` channel. Optional.
+    email: Union[str, None]
 
 
 class AppointmentCreate(TypedDict, total=False):
@@ -198,10 +202,12 @@ class AppointmentUpdateCustomer(TypedDict, total=False):
     # New name.
     name: str
     phone: "Phone"
+    # New email; `null` removes it.
+    email: Union[str, None]
 
 
 class AppointmentUpdate(TypedDict, total=False):
-    "Send only what changes. Changing `slot` or `customer.phone` starts the confirmation again."
+    "Send only what changes. Changing `slot`, `customer.phone` or `customer.email` starts the confirmation again."
 
     # New appointment type id.
     type: str
@@ -678,7 +684,7 @@ class BalanceTransaction(TypedDict, total=False):
     amount: Required[float]
     # Units charged, on `usage`.
     quantity: float
-    # `message` for WhatsApp and SMS, `minute` for voice.
+    # `message` for WhatsApp, SMS and email, `minute` for voice.
     unit: Literal["message", "minute"]
     # Id of the appointment charged, on `usage`.
     appointment: str
@@ -716,12 +722,14 @@ class AnalyticsSummaryAnsweredBy(TypedDict, total=False):
     whatsapp: int
     sms: int
     voice: int
+    email: int
 
 
 class AnalyticsSummaryUsage(TypedDict, total=False):
     whatsapp_messages: int
     sms_messages: int
     voice_minutes: float
+    email_messages: int
 
 
 class AnalyticsSummarySpend(TypedDict, total=False):
