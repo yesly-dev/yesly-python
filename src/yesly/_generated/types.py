@@ -104,6 +104,67 @@ class Answer(TypedDict, total=False):
     at: Required[str]
 
 
+class AvailabilitySlotResource(TypedDict, total=False):
+    "Who or what attends, when it matters to the customer."
+
+    id: str
+    name: str
+
+
+class AvailabilitySlot(TypedDict, total=False):
+    "A free slot in your own system (live availability), as your system returns it."
+
+    # Your id for the slot. Yesly sends it back in `availability.book`.
+    id: Required[str]
+    start: Required[str]
+    end: Required[str]
+    # `exact` for a time (a doctor at 10:20), `window` for a range (an installer from 8 to 14). Default `exact`.
+    kind: Literal["exact", "window"]
+    # Who or what attends, when it matters to the customer.
+    resource: Union["AvailabilitySlotResource", None]
+
+
+class AvailabilityRequestDataSlot(TypedDict, total=False):
+    "On `availability.book`, the slot the customer picked."
+
+    id: Required[str]
+
+
+AvailabilityRequestData = TypedDict(
+    "AvailabilityRequestData",
+    {
+        "appointment": Required["Appointment"],
+        "from": str,
+        "to": str,
+        "limit": int,
+        "slot": "AvailabilityRequestDataSlot",
+    },
+    total=False,
+)
+
+
+class AvailabilityRequest(TypedDict, total=False):
+    "What Yesly POSTs to your system's URL (live availability), signed with `Yesly-Signature` like webhooks. `availability.list` asks for free slots for the appointment between `from` and `to`; answer with AvailabilityListResponse. `availability.book` asks to book `slot.id`; answer with AvailabilityBookResponse, or `409` if it was just taken."
+
+    # Unique id, prefixed `avq_` (list) or `avb_` (book).
+    id: Required[str]
+    object: Required[Literal["availability_request"]]
+    type: Required[Literal["availability.list", "availability.book"]]
+    mode: Required[Literal["live", "test"]]
+    created: Required[str]
+    data: Required["AvailabilityRequestData"]
+
+
+class AvailabilityListResponse(TypedDict, total=False):
+    slots: Required[List["AvailabilitySlot"]]
+
+
+class AvailabilityBookResponse(TypedDict, total=False):
+    # `false` (or a `409`) when the slot was just taken.
+    booked: Required[bool]
+    slot: "AvailabilitySlot"
+
+
 class RescheduleRequest(TypedDict, total=False):
     "The customer's wish when there was no free slot to pick, or none suited them."
 
