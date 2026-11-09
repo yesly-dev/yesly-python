@@ -39,7 +39,7 @@ Phone = str
 DateOrDateTime = str
 
 
-# Contact channel. `email` needs `customer.email` on the appointment; without it the step is skipped.
+# Contact channel.
 Channel = Literal["whatsapp", "sms", "voice", "email"]
 
 
@@ -61,7 +61,7 @@ class ListEnvelope(TypedDict, total=False):
 class ErrorError(TypedDict, total=False):
     # Error class, such as `invalid_request`, `authentication_failed`, `conflict` or `rate_limited`.
     type: Required[str]
-    # Machine-readable reason, on validation errors, such as `phone_invalid` or `external_id_conflict`.
+    # Machine-readable reason, such as `phone_invalid` or `external_id_conflict`. Missing on `500` errors.
     code: str
     # The parameter at fault, on validation errors, such as `customer.phone`.
     param: str
@@ -75,7 +75,7 @@ class Error(TypedDict, total=False):
     error: Required["ErrorError"]
 
 
-# - `scheduled`: created, waiting for `first_contact_at`. - `in_progress`: Yesly is contacting the customer. - `confirmed`: the customer will be there. - `rescheduled`: the customer moved it to one of your free slots. - `reschedule_requested`: the customer wants another day and there was no free slot that suited them; `reschedule_request` says which days and when. Set the new `slot` and confirmation starts again. - `cancelled`: cancelled by the customer or by you. - `no_reply`: no answer on any channel. Your team should call.
+# - `scheduled`: created, waiting for `first_contact_at`. - `in_progress`: Yesly is contacting the customer. Also where contact stopped because the balance did not cover the next message; it is not resumed. - `confirmed`: the customer will be there. - `rescheduled`: the customer moved it to a free time (your published slots or your own system). - `reschedule_requested`: the customer wants another day and did not pick a free time: they proposed days, or asked on the call and did not pick a day from the SMS link. `reschedule_request` says what they would like. Set the new `slot` and confirmation starts again. - `cancelled`: cancelled by the customer or by you. - `no_reply`: no answer on any channel, or the call was transferred. Your team should call.
 AppointmentStatus = Literal["scheduled", "in_progress", "confirmed", "rescheduled", "reschedule_requested", "cancelled", "no_reply"]
 
 
@@ -166,12 +166,12 @@ class AvailabilityBookResponse(TypedDict, total=False):
 
 
 class RescheduleRequest(TypedDict, total=False):
-    "The customer's wish when there was no free slot to pick, or none suited them."
+    "The customer's wish when they asked for another day without picking a free time."
 
-    # Up to 3 days that would suit them (`YYYY-MM-DD`, in your time zone). Empty when they just asked for another day.
+    # Up to 3 days that would suit them (`YYYY-MM-DD`, in your time zone). Empty when they just asked for another day, such as on a call.
     dates: Required[List[str]]
     part_of_day: Required[Literal["morning", "afternoon", "any"]]
-    # Anything else they wrote, up to 300 characters.
+    # Anything else they wrote, up to 500 characters. From a call, what the customer said, or a note that they asked on the call and did not pick a day.
     note: Required[Union[str, None]]
     at: Required[str]
 
@@ -190,9 +190,11 @@ class Attempt(TypedDict, total=False):
     # Unique id, prefixed `att_`.
     id: Required[str]
     channel: Required["Channel"]
-    status: Required[Literal["queued", "sent", "delivered", "read", "answered", "no_answer", "failed", "skipped"]]
-    sent_at: Required[str]
-    # Cost of this attempt, in euros.
+    # `queued` (not handed over yet), `sent`, `delivered`, `read` (WhatsApp), `answered`, `no_answer` (calls), `failed`, or `transferred` (calls passed to a location's phone).
+    status: Required[Literal["queued", "sent", "delivered", "read", "answered", "no_answer", "failed", "transferred"]]
+    # When it was handed to the provider. `null` while `queued` or when it failed before.
+    sent_at: Required[Union[str, None]]
+    # Cost of this attempt, in euros. `0` for a message refused when sending (refunded). On a call, includes the SMS with the link to pick a day, if one was sent.
     cost: Required[float]
     # Calls only: what the call said and what it heard, in order. A customer turn has the recognised speech in `text` (empty for a silence) or the key pressed in `key`. Kept with the appointment and deleted with it.
     transcript: List["TranscriptLine"]
@@ -239,7 +241,7 @@ class Appointment(TypedDict, total=False):
     cancellation: Required[Union["Cancellation", None]]
     # Each contact attempt.
     attempts: Required[List["Attempt"]]
-    # What this appointment has cost so far, in euros. WhatsApp 0.08 per message, SMS 0.15 per message, email 0.01 per message, voice 0.30 per answered minute; unanswered calls are free.
+    # What this appointment has cost so far, in euros. WhatsApp 0.08 per message, SMS 0.15 per message, email 0.01 per message, voice 0.30 per started minute of a call that was picked up; unanswered calls are free. An SMS with the link to pick a day after a call adds 0.15. Messages refused when sending are refunded. In test mode it shows the message prices, but nothing is charged.
     cost: Required[float]
     # Currency of `cost`.
     currency: Required[str]
@@ -253,8 +255,8 @@ class Appointment(TypedDict, total=False):
 class AppointmentCreateSlot(TypedDict, total=False):
     # Start of the appointment or of the time window, with offset.
     start: Required[str]
-    # End of the window. Leave it out for exact-time types; it is computed from the type's duration.
-    end: str
+    # End of the window, after `start`. Without it, `start` plus the type's `minutes` (60 if the account has no types).
+    end: Union[str, None]
 
 
 class AppointmentCreateCustomer(TypedDict, total=False):
@@ -270,20 +272,20 @@ class AppointmentCreate(TypedDict, total=False):
     external_id: Required[str]
     # Appointment type id. Required if your account has more than one type.
     type: str
-    # Location id. Required when the type happens at one of your locations; otherwise optional, and used to pass calls to that location's phone.
-    location: str
+    # Location id, optional. For a type whose `place` is `location`, its name and address are shown in the email and on the answer page.
+    location: Union[str, None]
     slot: Required["AppointmentCreateSlot"]
     customer: Required["AppointmentCreateCustomer"]
-    # Override the channel order for this appointment, such as `["whatsapp", "voice"]`. Only channels enabled in your account.
+    # Override the channel order for this appointment, such as `["whatsapp", "voice"]`. At least one, without repeats. Without it, your account's channels.
     channels: List["Channel"]
     metadata: "Metadata"
 
 
 class AppointmentUpdateSlot(TypedDict, total=False):
     # New start, with offset.
-    start: str
-    # New end of the window.
-    end: str
+    start: Required[str]
+    # New end of the window. Without it, the new start plus the current length (or the new type's `minutes`, if you change the type).
+    end: Union[str, None]
 
 
 class AppointmentUpdateCustomer(TypedDict, total=False):
@@ -295,18 +297,18 @@ class AppointmentUpdateCustomer(TypedDict, total=False):
 
 
 class AppointmentUpdate(TypedDict, total=False):
-    "Send only what changes. Changing `slot`, `customer.phone` or `customer.email` starts the confirmation again."
+    "Send only what changes. Changing the slot start, `customer.phone`, `customer.email` or `channels` starts the confirmation again."
 
     # New appointment type id.
     type: str
-    # New location id.
-    location: str
+    # New location id; `null` removes it.
+    location: Union[str, None]
     slot: "AppointmentUpdateSlot"
     customer: "AppointmentUpdateCustomer"
-    # New channel order for this appointment.
+    # New channel order for this appointment. At least one, without repeats.
     channels: List["Channel"]
-    # Keys to set, merged with the existing ones. An empty string removes the key.
-    metadata: "Metadata"
+    # Keys to set, merged with the existing ones. A value of `null` or an empty string removes the key. At most 20 keys after the merge.
+    metadata: Dict[str, Union[str, None]]
 
 
 class AppointmentList(TypedDict, total=False):
@@ -326,12 +328,13 @@ class Import(TypedDict, total=False):
     # Unique id, prefixed `imp_`.
     id: Required[str]
     object: Required[Literal["import"]]
-    status: Required[Literal["processing", "completed", "failed"]]
+    # `processing` until every item is done, then `completed`. The counts and errors are filled in when it completes.
+    status: Required[Literal["processing", "completed"]]
     # Appointments in the request.
     total: Required[int]
-    # Appointments created so far.
+    # Appointments created.
     created: Required[int]
-    # Appointments updated so far, because their `external_id` already existed.
+    # Appointments updated, or left as they were, because their `external_id` already existed.
     updated: Required[int]
     # Appointments that failed.
     failed: Required[int]
@@ -343,10 +346,10 @@ class ImportError(TypedDict, total=False):
 
     # Position of the item in `appointments`.
     index: Required[int]
-    external_id: Required[str]
+    external_id: Required[Union[str, None]]
     # Same codes as the API errors, such as `phone_invalid`.
     code: Required[str]
-    param: str
+    param: Union[str, None]
     message: Required[str]
 
 
@@ -414,7 +417,7 @@ FirstContact = Union["FirstContact0", "FirstContact1"]
 
 
 class AppointmentType(TypedDict, total=False):
-    "What an appointment is. Sets how the time is shown and the instructions added to the message."
+    "What an appointment is. Sets the name and how the time is shown in messages, and what the customer may answer."
 
     # Your id for the type, such as `delivery`. Sent with each appointment.
     id: Required[str]
@@ -425,11 +428,11 @@ class AppointmentType(TypedDict, total=False):
     # Length of the window or duration of the appointment.
     minutes: Required[int]
     place: Required["Place"]
-    # What the customer should bring or prepare. Used by the `{instructions}` variable in templates.
+    # What the customer should bring or prepare. Stored and returned; not included in messages today.
     instructions: Required[Union[str, None]]
     # Whether the customer may ask for another date.
     reschedulable: Required[bool]
-    # Whether the customer may cancel. Off for deliveries such as a parcel or a mattress; then a "no" asks for another day (if reschedulable) or goes to your team.
+    # Whether the customer may cancel. Off for deliveries such as a parcel or a mattress; messages then do not offer it, and on a call a "no" is taken as a request for another day (if `reschedulable`).
     cancellable: Required[bool]
     # When the first message goes out for this type, or `null` to use your account's setting.
     first_contact: Required[Union["FirstContact", None]]
@@ -437,7 +440,7 @@ class AppointmentType(TypedDict, total=False):
 
 
 class AppointmentTypeCreate(TypedDict, total=False):
-    # Lowercase letters, numbers, `-` and `_`. Cannot change later.
+    # 1 to 40 lowercase letters, numbers, `-` and `_`. Cannot change later.
     id: Required[str]
     # Name shown to the customer.
     name: Required[str]
@@ -445,8 +448,8 @@ class AppointmentTypeCreate(TypedDict, total=False):
     # Window length or duration.
     minutes: Required[int]
     place: Required["Place"]
-    # Optional instructions for the customer.
-    instructions: str
+    # Optional instructions for the customer. Not included in messages today.
+    instructions: Union[str, None]
     reschedulable: bool
     cancellable: bool
     # Its own first message. Leave it out (or `null`) to use your account's setting.
@@ -458,7 +461,7 @@ class AppointmentTypeUpdate(TypedDict, total=False):
     name: str
     # New window length or duration.
     minutes: int
-    # New instructions. An empty string removes them.
+    # New instructions. An empty string clears them.
     instructions: str
     # Whether the customer may ask for another date.
     reschedulable: bool
@@ -480,28 +483,28 @@ class AppointmentTypeList(TypedDict, total=False):
 
 
 class Location(TypedDict, total=False):
-    "A centre, shop or depot. Where location appointments happen, and the phone a call is passed to when the customer wants a person."
+    "A centre, shop or depot where location appointments happen."
 
     # Your id for the location, such as `bilbao`.
     id: Required[str]
     object: Required[Literal["location"]]
     # Name shown to the customer.
     name: Required[str]
-    # Address used in the messages for appointments held there.
+    # Address shown in the email and on the answer page for appointments held there.
     address: Required[str]
-    # Where calls are passed when the customer asks for a person. Without it, Yesly offers a call back and flags the appointment for your team.
+    # Phone to pass calls to when the customer asks for a person. Stored and returned; live calls do not transfer today.
     transfer_phone: Required[Union["Phone", None]]
     created: Required[str]
 
 
 class LocationCreate(TypedDict, total=False):
-    # Lowercase letters, numbers, `-` and `_`. Cannot change later.
+    # 1 to 40 lowercase letters, numbers, `-` and `_`. Cannot change later.
     id: Required[str]
     # Name shown to the customer.
     name: Required[str]
     # Full address.
     address: Required[str]
-    # Phone for call transfers, E.164.
+    # Phone for call transfers, E.164. Not checked; live calls do not transfer today.
     transfer_phone: "Phone"
 
 
@@ -510,8 +513,8 @@ class LocationUpdate(TypedDict, total=False):
     name: str
     # New address.
     address: str
-    # New transfer phone, E.164. An empty string removes it.
-    transfer_phone: str
+    # New transfer phone, E.164. An empty string or `null` removes it.
+    transfer_phone: Union[str, None]
 
 
 class LocationList(TypedDict, total=False):
@@ -525,7 +528,7 @@ class LocationList(TypedDict, total=False):
     data: Required[List["Location"]]
 
 
-# - `appointment.created`: created by API, import, CSV or in the dashboard. - `appointment.confirmed`: the customer confirmed. - `appointment.rescheduled`: the customer moved it to another slot. - `appointment.reschedule_requested`: the customer asked for another day; set the new slot. - `appointment.cancelled`: cancelled by the customer or by you. - `appointment.no_reply`: no channel got an answer. - `message.sent`: a WhatsApp message or SMS left Yesly. - `message.delivered`: the carrier or WhatsApp confirmed delivery. - `message.failed`: it could not be delivered; the next channel runs. - `call.started`: a call started ringing. - `call.completed`: a call ended, with its duration and outcome. - `call.transferred`: the call was passed to the location's phone. - `balance.low`: the balance went below your alert threshold. - `balance.topped_up`: a top-up was paid.
+# - `appointment.created`: created by API, import, CSV or in the dashboard. - `appointment.confirmed`: the customer confirmed. - `appointment.rescheduled`: the customer moved it to another slot. - `appointment.reschedule_requested`: the customer asked for another day without picking a free time; set the new slot. - `appointment.cancelled`: cancelled by the customer or by you. - `appointment.no_reply`: no channel got an answer, or the call was transferred. - `message.sent`: a WhatsApp message, SMS or email left Yesly. - `message.delivered`: the carrier or WhatsApp confirmed delivery. - `message.failed`: it could not be sent or delivered; the next channel runs. - `call.started`: Yesly placed a call. - `call.completed`: a call got an answer or ended without one, with its `outcome`. - `call.transferred`: the call was passed to the location's phone (today only with the test number `+34600000006`). - `balance.low`: the balance went below your alert threshold. - `balance.topped_up`: a top-up was paid.
 EventType = Literal["appointment.created", "appointment.confirmed", "appointment.rescheduled", "appointment.reschedule_requested", "appointment.cancelled", "appointment.no_reply", "message.sent", "message.delivered", "message.failed", "call.started", "call.completed", "call.transferred", "balance.low", "balance.topped_up"]
 
 
@@ -536,7 +539,7 @@ class EventBase(TypedDict, total=False):
     id: Required[str]
     object: Required[Literal["event"]]
     type: Required["EventType"]
-    # Version used to render `data`, that of the endpoint.
+    # Always `2026-10-01`, the only version, whatever the endpoint's `api_version`.
     api_version: Required[str]
     mode: Required["Mode"]
     # When it happened.
@@ -557,8 +560,8 @@ class AppointmentEvent(TypedDict, total=False):
     # Unique id, prefixed `evt_`. Use it to ignore duplicates.
     id: Required[str]
     object: Required[Literal["event"]]
-    type: Required[Literal["appointment.created", "appointment.confirmed", "appointment.rescheduled", "appointment.cancelled", "appointment.no_reply"]]
-    # Version used to render `data`, that of the endpoint.
+    type: Required[Literal["appointment.created", "appointment.confirmed", "appointment.rescheduled", "appointment.reschedule_requested", "appointment.cancelled", "appointment.no_reply"]]
+    # Always `2026-10-01`, the only version, whatever the endpoint's `api_version`.
     api_version: Required[str]
     mode: Required["Mode"]
     # When it happened.
@@ -580,7 +583,7 @@ class MessageEvent(TypedDict, total=False):
     id: Required[str]
     object: Required[Literal["event"]]
     type: Required[Literal["message.sent", "message.delivered", "message.failed"]]
-    # Version used to render `data`, that of the endpoint.
+    # Always `2026-10-01`, the only version, whatever the endpoint's `api_version`.
     api_version: Required[str]
     mode: Required["Mode"]
     # When it happened.
@@ -602,7 +605,7 @@ class CallEvent(TypedDict, total=False):
     id: Required[str]
     object: Required[Literal["event"]]
     type: Required[Literal["call.started", "call.completed", "call.transferred"]]
-    # Version used to render `data`, that of the endpoint.
+    # Always `2026-10-01`, the only version, whatever the endpoint's `api_version`.
     api_version: Required[str]
     mode: Required["Mode"]
     # When it happened.
@@ -624,7 +627,7 @@ class BalanceEvent(TypedDict, total=False):
     id: Required[str]
     object: Required[Literal["event"]]
     type: Required[Literal["balance.low", "balance.topped_up"]]
-    # Version used to render `data`, that of the endpoint.
+    # Always `2026-10-01`, the only version, whatever the endpoint's `api_version`.
     api_version: Required[str]
     mode: Required["Mode"]
     # When it happened.
@@ -648,36 +651,63 @@ class EventList(TypedDict, total=False):
     data: Required[List["Event"]]
 
 
-class Message(TypedDict, total=False):
-    "A WhatsApp message or SMS, in `message.*` events. The reference does not publish its full shape; like every event object it carries the appointment's `external_id` and `metadata`."
+class MessageError(TypedDict, total=False):
+    "Why it failed. Only on failed messages."
 
+    # Such as `no_email`, `provider_error`, `twilio_63024` or `ses_MessageRejected`.
+    code: Required[str]
+    message: Required[Union[str, None]]
+
+
+class Message(TypedDict, total=False):
+    "A WhatsApp message, SMS or email, in `message.*` events. It is one of the appointment's attempts, as it stands when the event is recorded."
+
+    # Id of the attempt, prefixed `att_`.
+    id: Required[str]
+    object: Required[Literal["message"]]
+    # Id of the appointment, prefixed `apt_`.
+    appointment: Required[str]
     # The appointment's `external_id`.
     external_id: Required[str]
+    channel: Required[Literal["whatsapp", "sms", "email"]]
+    # The attempt's status, as in the appointment's `attempts`.
+    status: Required[Literal["queued", "sent", "delivered", "read", "answered", "failed"]]
+    # When it was handed to the provider, or `null`.
+    sent_at: Required[Union[str, None]]
+    # Cost in euros. `0` when it was refused when sending (refunded).
+    cost: Required[float]
+    # Why it failed. Only on failed messages.
+    error: "MessageError"
     metadata: Required["Metadata"]
 
 
 class CallTransferredTo(TypedDict, total=False):
-    "Where the call was passed, on `call.transferred`."
+    "Where the call was passed, only on a transferred call."
 
     # Location id.
-    location: str
-    phone: "Phone"
+    location: Required[Union[str, None]]
+    # The location's `transfer_phone`.
+    phone: Required[Union[str, None]]
 
 
 class Call(TypedDict, total=False):
-    "A call to the customer, in `call.*` events."
+    "A call to the customer, in `call.*` events. It is one of the appointment's attempts."
 
-    # Unique id, prefixed `call_`.
+    # Id of the attempt, prefixed `att_`.
     id: Required[str]
     object: Required[Literal["call"]]
     # Id of the appointment, prefixed `apt_`.
     appointment: Required[str]
     # The appointment's `external_id`.
     external_id: Required[str]
-    started_at: str
+    # When Yesly placed the call.
+    started_at: Required[Union[str, None]]
+    # Seconds of talk, once the call has ended. Missing until then.
     duration_seconds: int
-    # Where the call was passed, on `call.transferred`.
+    # Where the call was passed, only on a transferred call.
     transferred_to: "CallTransferredTo"
+    # Only on `call.completed`. `answered` when the customer gave an answer on the call, otherwise `no_answer`.
+    outcome: Literal["answered", "no_answer"]
     metadata: Required["Metadata"]
 
 
@@ -693,8 +723,9 @@ class WebhookEndpoint(TypedDict, total=False):
     # What the endpoint is for.
     description: Required[Union[str, None]]
     enabled_events: Required["EnabledEvents"]
+    # `disabled` by you, or by Yesly after 50 failed deliveries in a row. A disabled endpoint gets no events and its pending retries are dropped.
     status: Required[Literal["enabled", "disabled"]]
-    # Version used to render the events it receives.
+    # Stored as sent (default `2026-10-01`). Events are always rendered with `2026-10-01`.
     api_version: Required[str]
     created: Required[str]
     # Signing secret, `whsec_…`. Only returned when the endpoint is created or the secret is rolled.
@@ -708,12 +739,12 @@ EnabledEvents = List[Union["EventType", Literal["*"]]]
 
 
 class WebhookEndpointCreate(TypedDict, total=False):
-    # HTTPS URL. Self-signed certificates are refused.
+    # HTTPS URL on a public host, without a user name or password (`url_invalid` otherwise). Deliveries to a self-signed certificate fail.
     url: Required[str]
     enabled_events: Required["EnabledEvents"]
     # Optional note.
     description: str
-    # Defaults to your account's version.
+    # Stored and returned as sent; default `2026-10-01`. It does not change the events.
     api_version: str
 
 
@@ -724,7 +755,7 @@ class WebhookEndpointUpdate(TypedDict, total=False):
     enabled_events: "EnabledEvents"
     # New note.
     description: str
-    # `true` stops sending events to it until you enable it again.
+    # `true` stops sending events to it and drops its pending retries. `false` enables it again and resets its count of failed deliveries.
     disabled: bool
 
 
@@ -745,12 +776,14 @@ class WebhookTest(TypedDict, total=False):
     object: Required[Literal["webhook_test"]]
     # Id of the test event sent, prefixed `evt_`.
     event: Required[str]
-    # HTTP status your endpoint answered with.
-    status_code: Required[int]
+    # HTTP status your endpoint answered with. `null` when there was no answer; see `error`. Redirects are not followed.
+    status_code: Required[Union[int, None]]
     # Time your endpoint took to answer.
     duration_ms: Required[int]
-    # Body your endpoint answered with.
-    response_body: Required[str]
+    # Body your endpoint answered with, up to 2,000 characters. `null` when there was no answer.
+    response_body: Required[Union[str, None]]
+    # Only when there was no answer.
+    error: Literal["timeout", "address_not_allowed", "connection_failed"]
 
 
 class DeletedObject(TypedDict, total=False):
@@ -760,11 +793,11 @@ class DeletedObject(TypedDict, total=False):
 
 
 class BalanceAutoTopUp(TypedDict, total=False):
+    "Not available yet. `enabled` is `false` and `below` and `amount` are `null`."
+
     enabled: Required[bool]
-    # Top up when the balance goes below this.
-    below: Required[float]
-    # Amount topped up.
-    amount: Required[float]
+    below: Required[Union[float, None]]
+    amount: Required[Union[float, None]]
 
 
 class Balance(TypedDict, total=False):
@@ -777,14 +810,16 @@ class Balance(TypedDict, total=False):
     currency: Required[str]
     # Below this, `balance.low` fires.
     low_balance_threshold: Required[float]
+    # Not available yet. `enabled` is `false` and `below` and `amount` are `null`.
     auto_top_up: Required["BalanceAutoTopUp"]
 
 
-BalanceTransactionType = Literal["usage", "top_up"]
+# `usage` (a charge), `top_up` (a card top-up) or `adjustment` (money given back, such as a refund for a message refused when sending).
+BalanceTransactionType = Literal["usage", "top_up", "adjustment"]
 
 
 class BalanceTransaction(TypedDict, total=False):
-    "A charge (`usage`) or a top-up. Charges point to the appointment and its `external_id`."
+    "A charge (`usage`), a top-up or an adjustment. Charges point to the appointment and its `external_id`; adjustments do not."
 
     # Unique id, prefixed `btx_`.
     id: Required[str]
@@ -792,7 +827,7 @@ class BalanceTransaction(TypedDict, total=False):
     type: Required["BalanceTransactionType"]
     # Channel charged, on `usage`.
     channel: "Channel"
-    # In euros. Negative for charges, positive for top-ups.
+    # In euros. Negative for charges, positive for top-ups and adjustments.
     amount: Required[float]
     # Units charged, on `usage`.
     quantity: float
@@ -802,7 +837,7 @@ class BalanceTransaction(TypedDict, total=False):
     appointment: str
     # The appointment's `external_id`, on `usage`.
     external_id: str
-    # Invoice number, on `top_up`.
+    # Id of the Stripe invoice, on `top_up` when Stripe issued one.
     invoice: str
     created: Required[str]
 
@@ -839,6 +874,8 @@ class AnalyticsSummaryAnsweredBy(TypedDict, total=False):
 
 
 class AnalyticsSummaryUsage(TypedDict, total=False):
+    "Messages sent (not failed) and started call minutes."
+
     whatsapp_messages: int
     sms_messages: int
     voice_minutes: float
@@ -846,11 +883,23 @@ class AnalyticsSummaryUsage(TypedDict, total=False):
 
 
 class AnalyticsSummarySpend(TypedDict, total=False):
+    "What the appointments cost. `0` in test mode."
+
     amount: Required[float]
     currency: Required[str]
 
 
-# Outcomes, which channel got the answer, how long customers took, usage and spend. Days follow your account's time zone.
+class AnalyticsSummaryDaysItem(TypedDict, total=False):
+    date: Required[str]
+    # Appointments whose slot is on this day.
+    appointments: Required[int]
+    confirmed: Required[int]
+    rescheduled: Required[int]
+    cancelled: Required[int]
+    no_reply: Required[int]
+
+
+# Outcomes, which channel got the answer, how long customers took, usage and spend. Appointments count on the day of their slot, in your account's time zone.
 AnalyticsSummary = TypedDict(
     "AnalyticsSummary",
     {
@@ -861,9 +910,10 @@ AnalyticsSummary = TypedDict(
         "appointments": Required[int],
         "outcomes": Required["AnalyticsSummaryOutcomes"],
         "answered_by": Required["AnalyticsSummaryAnsweredBy"],
-        "median_minutes_to_answer": Required[float],
+        "median_minutes_to_answer": Required[Union[int, None]],
         "usage": Required["AnalyticsSummaryUsage"],
         "spend": Required["AnalyticsSummarySpend"],
+        "days": Required[List["AnalyticsSummaryDaysItem"]],
     },
     total=False,
 )
