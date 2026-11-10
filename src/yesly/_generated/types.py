@@ -190,8 +190,8 @@ class Attempt(TypedDict, total=False):
     # Unique id, prefixed `att_`.
     id: Required[str]
     channel: Required["Channel"]
-    # `queued` (not handed over yet), `sent`, `delivered`, `read` (WhatsApp), `answered`, `no_answer` (calls), `failed`, or `transferred` (calls passed to a location's phone).
-    status: Required[Literal["queued", "sent", "delivered", "read", "answered", "no_answer", "failed", "transferred"]]
+    # `queued` (not handed over yet), `sent`, `delivered`, `read` (WhatsApp), `answered`, `no_answer` (calls the customer did not pick up), `voicemail` (calls a voicemail picked up: hung up without leaving a message, free), `unresolved` (calls picked up that ended without an answer), `failed`, or `transferred` (calls passed to a location's phone).
+    status: Required[Literal["queued", "sent", "delivered", "read", "answered", "no_answer", "voicemail", "unresolved", "failed", "transferred"]]
     # When it was handed to the provider. `null` while `queued` or when it failed before.
     sent_at: Required[Union[str, None]]
     # Cost of this attempt, in euros. `0` for a message refused when sending (refunded). On a call, includes the WhatsApp or SMS with the link to pick a day, if one was sent; a call that reached a voicemail is free.
@@ -749,8 +749,8 @@ class Call(TypedDict, total=False):
     duration_seconds: int
     # Where the call was passed, only on a transferred call.
     transferred_to: "CallTransferredTo"
-    # Only on `call.completed`. `answered` when the customer gave an answer on the call, otherwise `no_answer`.
-    outcome: Literal["answered", "no_answer"]
+    # Only on `call.completed`. `answered` when the customer gave an answer on the call, `unresolved` when they picked up but gave none, `voicemail` when a voicemail picked up, `no_answer` when nobody did.
+    outcome: Literal["answered", "no_answer", "voicemail", "unresolved"]
     metadata: Required["Metadata"]
 
 
