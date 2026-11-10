@@ -80,7 +80,7 @@ AppointmentStatus = Literal["scheduled", "in_progress", "confirmed", "reschedule
 
 
 class AppointmentSlot(TypedDict, total=False):
-    "`start` and `end` of the appointment. For exact-time types, `end` is `start` plus the type's duration."
+    "`start` and `end` of the appointment. For exact-time types without an end, `end` is `start`."
 
     start: Required[str]
     end: Required[str]
@@ -194,10 +194,26 @@ class Attempt(TypedDict, total=False):
     status: Required[Literal["queued", "sent", "delivered", "read", "answered", "no_answer", "failed", "transferred"]]
     # When it was handed to the provider. `null` while `queued` or when it failed before.
     sent_at: Required[Union[str, None]]
-    # Cost of this attempt, in euros. `0` for a message refused when sending (refunded). On a call, includes the SMS with the link to pick a day, if one was sent.
+    # Cost of this attempt, in euros. `0` for a message refused when sending (refunded). On a call, includes the WhatsApp or SMS with the link to pick a day, if one was sent; a call that reached a voicemail is free.
     cost: Required[float]
-    # Calls only: what the call said and what it heard, in order. A customer turn has the recognised speech in `text` (empty for a silence) or the key pressed in `key`. Kept with the appointment and deleted with it.
+    # Calls only, and only when you get one appointment (lists leave it out): what the call said and what it heard, in order. A customer turn has the recognised speech in `text` (empty for a silence) or the key pressed in `key`. Kept with the appointment and deleted with it.
     transcript: List["TranscriptLine"]
+    # Calls only. `true` when the call's audio was recorded; get it with `GET /appointments/{id}/attempts/{attempt}/recording`.
+    has_recording: bool
+    # Calls only. `true` when Yesly's agent read the answer back (the date to confirm, the new slot or the cancellation) and the customer said yes again before it was recorded.
+    answer_verified: bool
+
+
+class Recording(TypedDict, total=False):
+    "A short-lived link to a call recording."
+
+    object: Required[Literal["recording"]]
+    # Id of the call attempt.
+    attempt: Required[str]
+    content_type: Required[Literal["audio/wav"]]
+    # Download or play link. Works until `expires_at`.
+    url: Required[str]
+    expires_at: Required[str]
 
 
 class TranscriptLine(TypedDict, total=False):
@@ -241,7 +257,7 @@ class Appointment(TypedDict, total=False):
     cancellation: Required[Union["Cancellation", None]]
     # Each contact attempt.
     attempts: Required[List["Attempt"]]
-    # What this appointment has cost so far, in euros. WhatsApp 0.08 per message, SMS 0.15 per message, email 0.01 per message, voice 0.30 per started minute of a call that was picked up; unanswered calls are free. An SMS with the link to pick a day after a call adds 0.15. Messages refused when sending are refunded. In test mode it shows the message prices, but nothing is charged.
+    # What this appointment has cost so far, in euros. WhatsApp 0.08 per message, SMS 0.15 per message, email 0.01 per message, voice 0.30 per started minute of a call that was picked up; unanswered calls are free, and so are voicemails. The link to pick a day after a call adds a WhatsApp (0.08) or, when WhatsApp cannot be used, an SMS (0.15). Messages refused when sending are refunded. In test mode it shows the message prices, but nothing is charged.
     cost: Required[float]
     # Currency of `cost`.
     currency: Required[str]
@@ -255,7 +271,7 @@ class Appointment(TypedDict, total=False):
 class AppointmentCreateSlot(TypedDict, total=False):
     # Start of the appointment or of the time window, with offset.
     start: Required[str]
-    # End of the window, after `start`. Without it, `start` plus the type's `minutes` (60 if the account has no types).
+    # End of the window, after `start`. Required unless the type is `exact` (then it may be left out, and `end` is `start`).
     end: Union[str, None]
 
 
@@ -284,7 +300,7 @@ class AppointmentCreate(TypedDict, total=False):
 class AppointmentUpdateSlot(TypedDict, total=False):
     # New start, with offset.
     start: Required[str]
-    # New end of the window. Without it, the new start plus the current length (or the new type's `minutes`, if you change the type).
+    # New end of the window. Without it, a window keeps its current length; an exact time needs none.
     end: Union[str, None]
 
 
@@ -320,6 +336,28 @@ class AppointmentList(TypedDict, total=False):
     # Whether there are more items after this page.
     has_more: Required[bool]
     data: Required[List["Appointment"]]
+
+
+class AppointmentCountsCounts(TypedDict, total=False):
+    "One entry per status, `0` when there are none."
+
+    scheduled: Required[int]
+    in_progress: Required[int]
+    confirmed: Required[int]
+    rescheduled: Required[int]
+    reschedule_requested: Required[int]
+    cancelled: Required[int]
+    no_reply: Required[int]
+
+
+class AppointmentCounts(TypedDict, total=False):
+    "How many appointments of each status match the filters."
+
+    object: Required[Literal["appointment_counts"]]
+    # One entry per status, `0` when there are none.
+    counts: Required["AppointmentCountsCounts"]
+    # The sum of `counts`.
+    total: Required[int]
 
 
 class Import(TypedDict, total=False):
@@ -425,17 +463,15 @@ class AppointmentType(TypedDict, total=False):
     # What the customer reads in the message.
     name: Required[str]
     time_format: Required["TimeFormat"]
-    # Length of the window or duration of the appointment.
-    minutes: Required[int]
     place: Required["Place"]
     # What the customer should bring or prepare. Stored and returned; not included in messages today.
     instructions: Required[Union[str, None]]
     # Whether the customer may ask for another date.
     reschedulable: Required[bool]
+    reschedule: Required["RescheduleWindow"]
     # Whether the customer may cancel. Off for deliveries such as a parcel or a mattress; messages then do not offer it, and on a call a "no" is taken as a request for another day (if `reschedulable`).
     cancellable: Required[bool]
-    # When the first message goes out for this type, or `null` to use your account's setting.
-    first_contact: Required[Union["FirstContact", None]]
+    first_contact: Required["FirstContact"]
     created: Required[str]
 
 
@@ -445,30 +481,37 @@ class AppointmentTypeCreate(TypedDict, total=False):
     # Name shown to the customer.
     name: Required[str]
     time_format: Required["TimeFormat"]
-    # Window length or duration.
-    minutes: Required[int]
     place: Required["Place"]
     # Optional instructions for the customer. Not included in messages today.
     instructions: Union[str, None]
     reschedulable: bool
+    # Where the customer may move it to. Default: 24 hours to 14 days from when they ask.
+    reschedule: "RescheduleWindow"
     cancellable: bool
-    # Its own first message. Leave it out (or `null`) to use your account's setting.
-    first_contact: Union["FirstContact", None]
+    # When the first message goes out. Default: the day before at 10:00.
+    first_contact: "FirstContact"
 
 
 class AppointmentTypeUpdate(TypedDict, total=False):
     # New name.
     name: str
-    # New window length or duration.
-    minutes: int
     # New instructions. An empty string clears them.
     instructions: str
     # Whether the customer may ask for another date.
     reschedulable: bool
+    reschedule: "RescheduleWindow"
     # Whether the customer may cancel.
     cancellable: bool
-    # Its own first message; `null` goes back to your account's setting.
-    first_contact: Union["FirstContact", None]
+    first_contact: "FirstContact"
+
+
+class RescheduleWindow(TypedDict, total=False):
+    "Where a customer may move the appointment to, counted from when they ask. Applies when `reschedulable` is true."
+
+    # The new time is at least this many hours later.
+    min_notice_hours: Required[int]
+    # The new time is at most this many days later.
+    window_days: Required[int]
 
 
 class AppointmentTypeList(TypedDict, total=False):
@@ -814,7 +857,7 @@ class Balance(TypedDict, total=False):
     auto_top_up: Required["BalanceAutoTopUp"]
 
 
-# `usage` (a charge), `top_up` (a card top-up) or `adjustment` (money given back, such as a refund for a message refused when sending).
+# `usage` (a charge), `top_up` (a card top-up) or `adjustment` (money given back, such as a refund for a message refused when sending, or taken back, negative, when a card top-up is refunded or disputed).
 BalanceTransactionType = Literal["usage", "top_up", "adjustment"]
 
 
@@ -873,6 +916,17 @@ class AnalyticsSummaryAnsweredBy(TypedDict, total=False):
     email: int
 
 
+class AnalyticsSummaryAgentCalls(TypedDict, total=False):
+    "Calls answered by Yesly's conversational agent in the range."
+
+    # Calls the agent took.
+    calls: int
+    # Of those, calls that ended with the customer's answer (confirmed, new day, another day asked or cancelled).
+    resolved: int
+    # Of those, calls where the agent read the answer back and the customer said yes again (`answer_verified` on the attempt).
+    verified: int
+
+
 class AnalyticsSummaryUsage(TypedDict, total=False):
     "Messages sent (not failed) and started call minutes."
 
@@ -911,6 +965,7 @@ AnalyticsSummary = TypedDict(
         "outcomes": Required["AnalyticsSummaryOutcomes"],
         "answered_by": Required["AnalyticsSummaryAnsweredBy"],
         "median_minutes_to_answer": Required[Union[int, None]],
+        "agent_calls": "AnalyticsSummaryAgentCalls",
         "usage": Required["AnalyticsSummaryUsage"],
         "spend": Required["AnalyticsSummarySpend"],
         "days": Required[List["AnalyticsSummaryDaysItem"]],

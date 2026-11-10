@@ -54,6 +54,25 @@ class Appointments(Resource):
         """
         return self._client._request("POST", "/appointments", body={"external_id": external_id, "type": type, "location": location, "slot": slot, "customer": customer, "channels": channels, "metadata": metadata})  # type: ignore[no-any-return]
 
+    def count(
+        self,
+        *,
+        date: Union[str, NotGiven] = NOT_GIVEN,
+        from_: Union[t.DateOrDateTime, NotGiven] = NOT_GIVEN,
+        to: Union[t.DateOrDateTime, NotGiven] = NOT_GIVEN,
+        type: Union[str, NotGiven] = NOT_GIVEN,
+        location: Union[str, NotGiven] = NOT_GIVEN,
+        external_id: Union[str, NotGiven] = NOT_GIVEN,
+        metadata: Union[Dict[str, str], NotGiven] = NOT_GIVEN,
+    ) -> t.AppointmentCounts:
+        """Count appointments by status.
+
+        How many appointments List appointments would return for each status, with the same filters (all of them but `status`, `limit` and `starting_after`). Without `date`, `from` or `to` it counts every appointment the account still keeps. Counts with whole days (`date`, or `from` and `to` as dates) or no dates, by type and location, come from counters kept as appointments change, a few seconds behind.
+
+        ``GET /appointments/counts``
+        """
+        return self._client._request("GET", "/appointments/counts", query={"date": date, "from": from_, "to": to, "type": type, "location": location, "external_id": external_id, "metadata": metadata})  # type: ignore[no-any-return]
+
     def retrieve(
         self,
         id: str,
@@ -99,6 +118,19 @@ class Appointments(Resource):
         ``POST /appointments/{id}/cancel``
         """
         return self._client._request("POST", f"/appointments/{_quote(id)}/cancel", body={"reason": reason}, idempotent=True, idempotency_key=idempotency_key)  # type: ignore[no-any-return]
+
+    def recording(
+        self,
+        id: str,
+        attempt: str,
+    ) -> t.Recording:
+        """Get a call recording.
+
+        A link to the audio of a conversational call (attempts with `has_recording` `true`): a WAV file, customer on the left channel and Yesly's agent on the right. The link works for 15 minutes; ask again for a new one. Recordings are kept as long as the account's retention allows and stored in the EU. Every link is logged (who and when, a member or an API key by name); owners and admins see the log in the dashboard. Needs a key with full access: a read-only key gets `403` `api_key_scope`.
+
+        ``GET /appointments/{id}/attempts/{attempt}/recording``
+        """
+        return self._client._request("GET", f"/appointments/{_quote(id)}/attempts/{_quote(attempt)}/recording")  # type: ignore[no-any-return]
 
     def import_(
         self,
@@ -194,12 +226,12 @@ class AppointmentTypes(Resource):
         id: str,
         name: str,
         time_format: t.TimeFormat,
-        minutes: int,
         place: t.Place,
         instructions: Union[Union[str, None], NotGiven] = NOT_GIVEN,
         reschedulable: Union[bool, NotGiven] = NOT_GIVEN,
+        reschedule: Union[t.RescheduleWindow, NotGiven] = NOT_GIVEN,
         cancellable: Union[bool, NotGiven] = NOT_GIVEN,
-        first_contact: Union[Union[t.FirstContact, None], NotGiven] = NOT_GIVEN,
+        first_contact: Union[t.FirstContact, NotGiven] = NOT_GIVEN,
         idempotency_key: Optional[str] = None,
     ) -> t.AppointmentType:
         """Create an appointment type.
@@ -208,18 +240,18 @@ class AppointmentTypes(Resource):
 
         ``POST /appointment_types``
         """
-        return self._client._request("POST", "/appointment_types", body={"id": id, "name": name, "time_format": time_format, "minutes": minutes, "place": place, "instructions": instructions, "reschedulable": reschedulable, "cancellable": cancellable, "first_contact": first_contact}, idempotent=True, idempotency_key=idempotency_key)  # type: ignore[no-any-return]
+        return self._client._request("POST", "/appointment_types", body={"id": id, "name": name, "time_format": time_format, "place": place, "instructions": instructions, "reschedulable": reschedulable, "reschedule": reschedule, "cancellable": cancellable, "first_contact": first_contact}, idempotent=True, idempotency_key=idempotency_key)  # type: ignore[no-any-return]
 
     def update(
         self,
         id: str,
         *,
         name: Union[str, NotGiven] = NOT_GIVEN,
-        minutes: Union[int, NotGiven] = NOT_GIVEN,
         instructions: Union[str, NotGiven] = NOT_GIVEN,
         reschedulable: Union[bool, NotGiven] = NOT_GIVEN,
+        reschedule: Union[t.RescheduleWindow, NotGiven] = NOT_GIVEN,
         cancellable: Union[bool, NotGiven] = NOT_GIVEN,
-        first_contact: Union[Union[t.FirstContact, None], NotGiven] = NOT_GIVEN,
+        first_contact: Union[t.FirstContact, NotGiven] = NOT_GIVEN,
     ) -> t.AppointmentType:
         """Update an appointment type.
 
@@ -227,7 +259,7 @@ class AppointmentTypes(Resource):
 
         ``PATCH /appointment_types/{id}``
         """
-        return self._client._request("PATCH", f"/appointment_types/{_quote(id)}", body={"name": name, "minutes": minutes, "instructions": instructions, "reschedulable": reschedulable, "cancellable": cancellable, "first_contact": first_contact})  # type: ignore[no-any-return]
+        return self._client._request("PATCH", f"/appointment_types/{_quote(id)}", body={"name": name, "instructions": instructions, "reschedulable": reschedulable, "reschedule": reschedule, "cancellable": cancellable, "first_contact": first_contact})  # type: ignore[no-any-return]
 
 
 class Locations(Resource):
@@ -343,7 +375,7 @@ class WebhookEndpoints(Resource):
     ) -> t.WebhookTest:
         """Send a test event.
 
-        Sends a sample event to the endpoint, signed like a real one, and returns what it answered. Useful to check the URL and your signature check before going live. The event has the `mode` of the key that calls this, and `data` is always a sample `appointment` (with only some fields), whatever the `type`. It is not stored, so it does not appear in List events.
+        Sends a sample event to the endpoint, signed like a real one, and returns what it answered. Useful to check the URL and your signature check before going live. The event has the `mode` of the key that calls this, and `data` is always a sample `appointment` (with only some fields), whatever the `type`. It is not stored, so it does not appear in List events. Needs a key with full access: a read-only key gets `403` `api_key_read_only`.
 
         ``POST /webhook_endpoints/{id}/test``
         """
@@ -401,7 +433,7 @@ class Balance(Resource):
     ) -> t.Balance:
         """Retrieve the balance.
 
-        Yesly is prepaid. Each WhatsApp message, SMS, email and started minute of a call that was picked up is taken from the balance at the public price; calls nobody picks up are free. A message that could not be sent is refunded with an `adjustment`. When a customer asks for another day on a call, the SMS with the link to pick a day is charged as an SMS. Top-ups are made by card in the dashboard and cannot be made through the API.
+        Yesly is prepaid. Each WhatsApp message, SMS, email and started minute of a call that was picked up is taken from the balance at the public price; calls nobody picks up are free. A message that could not be sent is refunded with an `adjustment`. When a customer asks for another day on a call, the link to pick a day goes by WhatsApp (or by SMS when WhatsApp cannot be used) and is charged as a message of that channel. Top-ups are made by card in the dashboard and cannot be made through the API.
 
         ``GET /balance``
         """
