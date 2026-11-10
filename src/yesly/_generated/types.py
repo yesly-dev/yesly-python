@@ -27,6 +27,19 @@ EVENT_TYPES = (
     "balance.topped_up",
 )
 
+# A use case Yesly contacts customers for. Today only `appointments`; more values will be added.
+UseCase = Literal["appointments"]
+
+
+class Subject(TypedDict, total=False):
+    "The object an event or charge is about."
+
+    # Its type, as in its own `object` field. Today always `appointment`.
+    object: Required[str]
+    # Its id.
+    id: Required[str]
+
+
 # `live` or `test`, from the API key.
 Mode = Literal["live", "test"]
 
@@ -582,6 +595,10 @@ class EventBase(TypedDict, total=False):
     id: Required[str]
     object: Required[Literal["event"]]
     type: Required["EventType"]
+    # The use case the event belongs to; `null` for the account's own `balance.*` events.
+    use_case: Required[Union["UseCase", None]]
+    # What the event is about (the appointment, also for `message.*` and `call.*`); `null` for `balance.*` events.
+    subject: Required[Union["Subject", None]]
     # Always `2026-10-01`, the only version, whatever the endpoint's `api_version`.
     api_version: Required[str]
     mode: Required["Mode"]
@@ -604,6 +621,10 @@ class AppointmentEvent(TypedDict, total=False):
     id: Required[str]
     object: Required[Literal["event"]]
     type: Required[Literal["appointment.created", "appointment.confirmed", "appointment.rescheduled", "appointment.reschedule_requested", "appointment.cancelled", "appointment.no_reply"]]
+    # The use case the event belongs to; `null` for the account's own `balance.*` events.
+    use_case: Required[Union["UseCase", None]]
+    # What the event is about (the appointment, also for `message.*` and `call.*`); `null` for `balance.*` events.
+    subject: Required[Union["Subject", None]]
     # Always `2026-10-01`, the only version, whatever the endpoint's `api_version`.
     api_version: Required[str]
     mode: Required["Mode"]
@@ -626,6 +647,10 @@ class MessageEvent(TypedDict, total=False):
     id: Required[str]
     object: Required[Literal["event"]]
     type: Required[Literal["message.sent", "message.delivered", "message.failed"]]
+    # The use case the event belongs to; `null` for the account's own `balance.*` events.
+    use_case: Required[Union["UseCase", None]]
+    # What the event is about (the appointment, also for `message.*` and `call.*`); `null` for `balance.*` events.
+    subject: Required[Union["Subject", None]]
     # Always `2026-10-01`, the only version, whatever the endpoint's `api_version`.
     api_version: Required[str]
     mode: Required["Mode"]
@@ -648,6 +673,10 @@ class CallEvent(TypedDict, total=False):
     id: Required[str]
     object: Required[Literal["event"]]
     type: Required[Literal["call.started", "call.completed", "call.transferred"]]
+    # The use case the event belongs to; `null` for the account's own `balance.*` events.
+    use_case: Required[Union["UseCase", None]]
+    # What the event is about (the appointment, also for `message.*` and `call.*`); `null` for `balance.*` events.
+    subject: Required[Union["Subject", None]]
     # Always `2026-10-01`, the only version, whatever the endpoint's `api_version`.
     api_version: Required[str]
     mode: Required["Mode"]
@@ -670,6 +699,10 @@ class BalanceEvent(TypedDict, total=False):
     id: Required[str]
     object: Required[Literal["event"]]
     type: Required[Literal["balance.low", "balance.topped_up"]]
+    # The use case the event belongs to; `null` for the account's own `balance.*` events.
+    use_case: Required[Union["UseCase", None]]
+    # What the event is about (the appointment, also for `message.*` and `call.*`); `null` for `balance.*` events.
+    subject: Required[Union["Subject", None]]
     # Always `2026-10-01`, the only version, whatever the endpoint's `api_version`.
     api_version: Required[str]
     mode: Required["Mode"]
@@ -777,8 +810,8 @@ class WebhookEndpoint(TypedDict, total=False):
     previous_secret_expires_at: str
 
 
-# Event types sent to the endpoint. `["*"]` for all.
-EnabledEvents = List[Union["EventType", Literal["*"]]]
+# Event types sent to the endpoint. `["*"]` for all; a family such as `appointment.*` for every event of one object, including types added later.
+EnabledEvents = List[Union["EventType", Literal["*"], Literal["appointment.*", "message.*", "call.*", "balance.*"]]]
 
 
 class WebhookEndpointCreate(TypedDict, total=False):
@@ -862,7 +895,7 @@ BalanceTransactionType = Literal["usage", "top_up", "adjustment"]
 
 
 class BalanceTransaction(TypedDict, total=False):
-    "A charge (`usage`), a top-up or an adjustment. Charges point to the appointment and its `external_id`; adjustments do not."
+    "A charge (`usage`), a top-up or an adjustment. Charges point to their use case, the appointment and its `external_id`; adjustments do not."
 
     # Unique id, prefixed `btx_`.
     id: Required[str]
@@ -872,6 +905,10 @@ class BalanceTransaction(TypedDict, total=False):
     channel: "Channel"
     # In euros. Negative for charges, positive for top-ups and adjustments.
     amount: Required[float]
+    # The use case charged, on `usage`; `null` on top-ups and adjustments, which belong to the account.
+    use_case: Required[Union["UseCase", None]]
+    # The object charged, on `usage` (the appointment); `null` otherwise.
+    subject: Required[Union["Subject", None]]
     # Units charged, on `usage`.
     quantity: float
     # `message` for WhatsApp, SMS and email, `minute` for voice.
@@ -958,6 +995,7 @@ AnalyticsSummary = TypedDict(
     "AnalyticsSummary",
     {
         "object": Required[Literal["analytics_summary"]],
+        "use_case": Required["UseCase"],
         "range": Required[Literal["7d", "30d", "90d"]],
         "from": Required[str],
         "to": Required[str],

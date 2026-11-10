@@ -401,6 +401,8 @@ class Events(Resource):
         self,
         *,
         type: Union[str, NotGiven] = NOT_GIVEN,
+        use_case: Union[t.UseCase, NotGiven] = NOT_GIVEN,
+        subject: Union[str, NotGiven] = NOT_GIVEN,
         appointment: Union[str, NotGiven] = NOT_GIVEN,
         from_: Union[t.DateOrDateTime, NotGiven] = NOT_GIVEN,
         limit: Union[int, NotGiven] = NOT_GIVEN,
@@ -412,7 +414,7 @@ class Events(Resource):
 
         ``GET /events``
         """
-        return self._client._request("GET", "/events", query={"type": type, "appointment": appointment, "from": from_, "limit": limit, "starting_after": starting_after}, paged=True)  # type: ignore[no-any-return]
+        return self._client._request("GET", "/events", query={"type": type, "use_case": use_case, "subject": subject, "appointment": appointment, "from": from_, "limit": limit, "starting_after": starting_after}, paged=True)  # type: ignore[no-any-return]
 
     def retrieve(
         self,
@@ -443,6 +445,8 @@ class Balance(Resource):
         self,
         *,
         type: Union[t.BalanceTransactionType, NotGiven] = NOT_GIVEN,
+        use_case: Union[t.UseCase, NotGiven] = NOT_GIVEN,
+        subject: Union[str, NotGiven] = NOT_GIVEN,
         appointment: Union[str, NotGiven] = NOT_GIVEN,
         from_: Union[t.DateOrDateTime, NotGiven] = NOT_GIVEN,
         to: Union[t.DateOrDateTime, NotGiven] = NOT_GIVEN,
@@ -455,13 +459,14 @@ class Balance(Resource):
 
         ``GET /balance/transactions``
         """
-        return self._client._request("GET", "/balance/transactions", query={"type": type, "appointment": appointment, "from": from_, "to": to, "limit": limit, "starting_after": starting_after}, paged=True)  # type: ignore[no-any-return]
+        return self._client._request("GET", "/balance/transactions", query={"type": type, "use_case": use_case, "subject": subject, "appointment": appointment, "from": from_, "to": to, "limit": limit, "starting_after": starting_after}, paged=True)  # type: ignore[no-any-return]
 
 
 class Analytics(Resource):
     def retrieve_summary(
         self,
         *,
+        use_case: Union[t.UseCase, NotGiven] = NOT_GIVEN,
         range: Union[Literal["7d", "30d", "90d"], NotGiven] = NOT_GIVEN,
         type: Union[str, NotGiven] = NOT_GIVEN,
         location: Union[str, NotGiven] = NOT_GIVEN,
@@ -472,7 +477,7 @@ class Analytics(Resource):
 
         ``GET /analytics/summary``
         """
-        return self._client._request("GET", "/analytics/summary", query={"range": range, "type": type, "location": location})  # type: ignore[no-any-return]
+        return self._client._request("GET", "/analytics/summary", query={"use_case": use_case, "range": range, "type": type, "location": location})  # type: ignore[no-any-return]
 
 
 class Resources:
