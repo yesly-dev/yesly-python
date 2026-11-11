@@ -8,7 +8,7 @@ import yesly
 from yesly.webhooks import construct_event, generate_test_header
 
 SECRET = "whsec_test"
-BODY = json.dumps({"id": "evt_1", "object": "event", "type": "appointment.confirmed", "data": {"appointment": {"id": "apt_1"}}})
+BODY = json.dumps({"id": "evt_1", "object": "event", "type": "conversation.ended", "data": {"conversation": {"id": "cnv_7Qp4Ns2Xk9Lm3D", "outcome": {"code": "confirmed", "data": {}}}}})
 NOW = 1794474252
 
 
@@ -18,7 +18,8 @@ def sign(secret, t=NOW, payload=BODY):
 
 def test_valid_signature():
     ev = construct_event(BODY, f"t={NOW},v1={sign(SECRET)}", SECRET, now=NOW)
-    assert ev["type"] == "appointment.confirmed"
+    assert ev["type"] == "conversation.ended"
+    assert ev["data"]["conversation"]["outcome"]["code"] == "confirmed"
     assert yesly.Yesly.webhooks.construct_event(BODY.encode(), f"t={NOW},v1={sign(SECRET)}", SECRET, now=NOW)["id"] == "evt_1"
 
 

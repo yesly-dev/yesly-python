@@ -14,15 +14,21 @@ class Page(Generic[T]):
         self.data: List[T] = raw.get("data", [])
         self._fetch_after = fetch_after
 
+    def _last_id(self) -> Optional[str]:
+        # Lists that come whole, in one page (a conversation's turns), have items without an id.
+        last: Any = self.data[-1] if self.data else None
+        item_id = last.get("id") if isinstance(last, dict) else None
+        return item_id if isinstance(item_id, str) else None
+
     def has_next_page(self) -> bool:
-        return self.has_more and len(self.data) > 0
+        return self.has_more and self._last_id() is not None
 
     def next_page(self) -> "Page[T]":
         """The page after this one. Check ``has_next_page()`` first."""
-        if not self.has_next_page():
+        last_id = self._last_id()
+        if not self.has_more or last_id is None:
             raise StopIteration("There is no next page.")
-        last: Any = self.data[-1]
-        return self._fetch_after(last["id"])
+        return self._fetch_after(last_id)
 
     def auto_paging_iter(self) -> Iterator[T]:
         page: Optional[Page[T]] = self
