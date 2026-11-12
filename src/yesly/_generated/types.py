@@ -172,6 +172,8 @@ class Agent(TypedDict, total=False):
     channels: Required[List["Channel"]]
     # The voice of its calls, from the dashboard's catalog, or `null` for its default.
     voice: Required[Union[str, None]]
+    # The email profile its emails go out through: one of the company's own SMTP servers, set up in the dashboard (Settings → Email). `null`: Yesly's sender, with the company's name.
+    email_profile: Required[Union[str, None]]
     # The models it runs on, as `provider:model`. Set by Yesly.
     models: Required["AgentModels"]
     limits: Required["AgentLimits"]
@@ -206,6 +208,8 @@ class AgentUpdateRecording(TypedDict, total=False):
 class AgentUpdate(TypedDict, total=False):
     # A voice of the catalog, or `null` for the agent's default.
     voice: Union[str, None]
+    # One of the company's email profiles, or `null` for Yesly's sender.
+    email_profile: Union[str, None]
     # Only the limits sent change.
     limits: "AgentUpdateLimits"
     # The agent's own contact hours, or `null` to use the account's.
@@ -413,6 +417,8 @@ class Conversation(TypedDict, total=False):
     transcript: Required[Literal["available", "expired", "deleted"]]
     # `available`, `expired` (past your retention) or `none` (no call was recorded).
     recording: Required[Literal["available", "expired", "none"]]
+    # Id of the campaign that started it, prefixed `cmp_`. `null` when it did not come from a campaign.
+    campaign: Required[Union[str, None]]
     created: Required[str]
 
 
@@ -438,6 +444,166 @@ class ConversationList(TypedDict, total=False):
     # Whether there are more items after this page.
     has_more: Required[bool]
     data: Required[List["Conversation"]]
+
+
+# - `scheduled`: `start_at` is in the future. - `running`: starting conversations, or waiting for the ones started to finish. - `waiting`: recipients are left but it is outside the agent's contact hours (live mode). - `paused`: you paused it; nothing new starts. Conversations already started go on. - `cancelled`: you cancelled it; recipients not started are `skipped`. Conversations already started go on. - `completed`: every recipient was started or failed, and every conversation finished.
+CampaignStatus = Literal["scheduled", "running", "waiting", "paused", "cancelled", "completed"]
+
+
+class CampaignRecipients(TypedDict, total=False):
+    "How many rows are in each state."
+
+    total: Required[int]
+    # Not started yet.
+    pending: Required[int]
+    # Started: a conversation exists.
+    launched: Required[int]
+    # Could not start, for example because the contact was erased or the number is not allowed. Each row has an `error`.
+    failed: Required[int]
+    # Not started because the campaign was cancelled.
+    skipped: Required[int]
+
+
+class CampaignConversations(TypedDict, total=False):
+    "The conversations the campaign started, counted by status, with what they achieved so far."
+
+    scheduled: Required[int]
+    in_progress: Required[int]
+    ended: Required[int]
+    no_reply: Required[int]
+    cancelled: Required[int]
+    failed: Required[int]
+    # How many contacts answered or wrote back.
+    engaged: Required[int]
+    # Conversations per outcome code of the agent. Codes nobody reached are missing.
+    outcomes: Required[Dict[str, int]]
+    # What the conversations cost so far, in euro cents. `0` in test mode.
+    cost_cents: Required[int]
+
+
+class Campaign(TypedDict, total=False):
+    "One agent contacting many people at a steady pace. Each recipient is started as an ordinary outbound conversation."
+
+    # Unique id, prefixed `cmp_`.
+    id: Required[str]
+    object: Required[Literal["campaign"]]
+    mode: Required["Mode"]
+    name: Required[str]
+    # Id of the agent.
+    agent: Required[str]
+    # The order the channels are tried in, for every conversation.
+    channels: Required[List["Channel"]]
+    # Not before this time.
+    start_at: Required[str]
+    # Conversations started per minute.
+    rate: Required[int]
+    status: Required["CampaignStatus"]
+    # How many rows are in each state.
+    recipients: Required["CampaignRecipients"]
+    # The conversations the campaign started, counted by status, with what they achieved so far.
+    conversations: Required["CampaignConversations"]
+    created: Required[str]
+    # When the campaign was cancelled or completed. `null` until then.
+    ended_at: Required[Union[str, None]]
+
+
+class CampaignRecipientInput(TypedDict, total=False):
+    "One person to contact: an existing contact (`contact`), or the person's details with at least a phone, an email or an `external_id`."
+
+    # Id of an existing contact, prefixed `ctc_`. Do not combine with the person's details.
+    contact: str
+    # Your own id for the customer.
+    external_id: str
+    name: str
+    language: str
+    phone: "Phone"
+    email: "Email"
+    # Your data for the agent for this person, checked against its `context_schema`.
+    context: Dict[str, Any]
+
+
+class CampaignCreate(TypedDict, total=False):
+    name: Required[str]
+    # Id of the agent, prefixed `agt_`.
+    agent: Required[str]
+    # The order to try for every recipient, with the same rules as Create a conversation.
+    channels: Required[List["Channel"]]
+    # Not before this time, and always inside contact hours in live mode. Default now. At most 90 days ahead.
+    start_at: str
+    # Conversations started per minute.
+    rate: int
+    # Who to contact, in order.
+    recipients: Required[List["CampaignRecipientInput"]]
+
+
+class CampaignList(TypedDict, total=False):
+    "A page of a list. Keep paginating with `starting_after` while `has_more` is `true`."
+
+    object: Required[Literal["list"]]
+    # Path of the list, such as `/v1/conversations`.
+    url: Required[str]
+    # Whether there are more items after this page.
+    has_more: Required[bool]
+    data: Required[List["Campaign"]]
+
+
+# - `pending`: not started yet. - `launched`: its conversation was started. - `failed`: it could not start; see `error`. - `skipped`: the campaign was cancelled before it started.
+CampaignRecipientStatus = Literal["pending", "launched", "failed", "skipped"]
+
+
+class CampaignRecipientError(TypedDict, total=False):
+    "Why the row failed. `null` otherwise."
+
+    code: Required[str]
+    message: Required[str]
+
+
+class CampaignRecipientConversationOutcome(TypedDict, total=False):
+    "The outcome code the agent ended with. `null` until then."
+
+    code: Required[str]
+
+
+class CampaignRecipientConversation(TypedDict, total=False):
+    "The conversation the row started. `null` until then."
+
+    # Id of the conversation, prefixed `cnv_`.
+    id: Required[str]
+    status: Required["ConversationStatus"]
+    # The channel in use, or the last one used.
+    channel: Required[Union["Channel", None]]
+    # The outcome code the agent ended with. `null` until then.
+    outcome: Required[Union["CampaignRecipientConversationOutcome", None]]
+
+
+class CampaignRecipient(TypedDict, total=False):
+    "One row of a campaign. Once it has started it shows the contact's current details, which are `null` after the contact is erased; before, what you sent (or the contact's details when sent as a contact id)."
+
+    object: Required[Literal["campaign_recipient"]]
+    # Position in the campaign, from 1.
+    row: Required[int]
+    status: Required["CampaignRecipientStatus"]
+    name: Required[Union[str, None]]
+    phone: Required[Union[str, None]]
+    email: Required[Union[str, None]]
+    external_id: Required[Union[str, None]]
+    # Id of the contact, prefixed `ctc_`. `null` until the row starts, and after the contact is erased.
+    contact: Required[Union[str, None]]
+    # Why the row failed. `null` otherwise.
+    error: Required[Union["CampaignRecipientError", None]]
+    # The conversation the row started. `null` until then.
+    conversation: Required[Union["CampaignRecipientConversation", None]]
+
+
+class CampaignRecipientList(TypedDict, total=False):
+    "A page of a list. Keep paginating with `starting_after` while `has_more` is `true`."
+
+    object: Required[Literal["list"]]
+    # Path of the list, such as `/v1/conversations`.
+    url: Required[str]
+    # Whether there are more items after this page.
+    has_more: Required[bool]
+    data: Required[List["CampaignRecipient"]]
 
 
 class Turn(TypedDict, total=False):
@@ -940,6 +1106,8 @@ class BalanceTransaction(TypedDict, total=False):
     id: Required[str]
     object: Required[Literal["balance_transaction"]]
     type: Required["BalanceTransactionType"]
+    # The account that spent it; `null` for the organization's top-ups.
+    account: Required[Union[str, None]]
     # Channel charged, on `usage`.
     channel: "Channel"
     # In euros. Negative for charges, positive for top-ups and adjustments.
@@ -996,6 +1164,25 @@ class AnalyticsSummaryStatuses(TypedDict, total=False):
     no_reply: Required[int]
     cancelled: Required[int]
     failed: Required[int]
+
+
+class AnalyticsSummaryCalls(TypedDict, total=False):
+    "Calls either way (one conversation may make several), by the day of their conversation."
+
+    # Calls dialled or received.
+    placed: Required[int]
+    # Calls a person picked up (not a voicemail).
+    answered: Required[int]
+    # Calls the agent took and spoke on.
+    taken: Required[int]
+    # Calls nobody picked up, or that were busy or rejected.
+    no_answer: Required[int]
+    # Calls a voicemail picked up.
+    voicemail: Required[int]
+    # Calls that could not be placed or broke.
+    failed: Required[int]
+    # Average milliseconds from the pick-up to the agent speaking. `null` without answered calls.
+    first_words_ms: Required[Union[int, None]]
 
 
 class AnalyticsSummaryByChannel(TypedDict, total=False):
@@ -1069,6 +1256,7 @@ AnalyticsSummary = TypedDict(
         "outcomes": Required[Dict[str, int]],
         "engaged": Required[int],
         "transferred": Required[int],
+        "calls": "AnalyticsSummaryCalls",
         "by_channel": Required["AnalyticsSummaryByChannel"],
         "usage": Required["AnalyticsSummaryUsage"],
         "spend": Required["AnalyticsSummarySpend"],

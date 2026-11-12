@@ -39,6 +39,7 @@ class Agents(Resource):
         id: str,
         *,
         voice: Union[Union[str, None], NotGiven] = NOT_GIVEN,
+        email_profile: Union[Union[str, None], NotGiven] = NOT_GIVEN,
         limits: Union[t.AgentUpdateLimits, NotGiven] = NOT_GIVEN,
         contact_hours: Union[Union[t.ContactHours, None], NotGiven] = NOT_GIVEN,
         recording: Union[t.AgentUpdateRecording, NotGiven] = NOT_GIVEN,
@@ -47,11 +48,11 @@ class Agents(Resource):
     ) -> t.Agent:
         """Update an agent's settings.
 
-        Changes the settings you own: voice, limits, contact hours, recording, the disclosure sentence and the transfer targets. The agent's code, models, outcomes and context are Yesly's: ask for a new version. Accounts with EU data residency cannot choose a voice that is processed outside the EU (`voice_not_in_eu`).
+        Changes the settings you own: voice, email profile, limits, contact hours, recording, the disclosure sentence and the transfer targets. The agent's code, models, outcomes and context are Yesly's: ask for a new version. Accounts with EU data residency cannot choose a voice that is processed outside the EU (`voice_not_in_eu`).
 
         ``PATCH /agents/{id}``
         """
-        return self._client._request("PATCH", f"/agents/{_quote(id)}", body={"voice": voice, "limits": limits, "contact_hours": contact_hours, "recording": recording, "disclosure": disclosure, "transfer_targets": transfer_targets})  # type: ignore[no-any-return]
+        return self._client._request("PATCH", f"/agents/{_quote(id)}", body={"voice": voice, "email_profile": email_profile, "limits": limits, "contact_hours": contact_hours, "recording": recording, "disclosure": disclosure, "transfer_targets": transfer_targets})  # type: ignore[no-any-return]
 
     def pause(
         self,
@@ -230,16 +231,17 @@ class Conversations(Resource):
         outcome: Union[str, NotGiven] = NOT_GIVEN,
         from_: Union[t.DateOrDateTime, NotGiven] = NOT_GIVEN,
         to: Union[t.DateOrDateTime, NotGiven] = NOT_GIVEN,
+        order: Union[Literal["desc", "asc"], NotGiven] = NOT_GIVEN,
         limit: Union[int, NotGiven] = NOT_GIVEN,
         starting_after: Union[str, NotGiven] = NOT_GIVEN,
     ) -> Page[t.Conversation]:
         """List conversations.
 
-        Newest first, by creation.
+        Newest first by creation, or oldest first with `order=asc`.
 
         ``GET /conversations``
         """
-        return self._client._request("GET", "/conversations", query={"agent": agent, "contact": contact, "status": status, "direction": direction, "channel": channel, "outcome": outcome, "from": from_, "to": to, "limit": limit, "starting_after": starting_after}, paged=True)  # type: ignore[no-any-return]
+        return self._client._request("GET", "/conversations", query={"agent": agent, "contact": contact, "status": status, "direction": direction, "channel": channel, "outcome": outcome, "from": from_, "to": to, "order": order, "limit": limit, "starting_after": starting_after}, paged=True)  # type: ignore[no-any-return]
 
     def create(
         self,
@@ -320,6 +322,110 @@ class Conversations(Resource):
         ``GET /conversations/{id}/recording``
         """
         return self._client._request("GET", f"/conversations/{_quote(id)}/recording", query={"message": message})  # type: ignore[no-any-return]
+
+
+class Campaigns(Resource):
+    def list(
+        self,
+        *,
+        status: Union[t.CampaignStatus, NotGiven] = NOT_GIVEN,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        starting_after: Union[str, NotGiven] = NOT_GIVEN,
+    ) -> Page[t.Campaign]:
+        """List campaigns.
+
+        Newest first by creation.
+
+        ``GET /campaigns``
+        """
+        return self._client._request("GET", "/campaigns", query={"status": status, "limit": limit, "starting_after": starting_after}, paged=True)  # type: ignore[no-any-return]
+
+    def create(
+        self,
+        *,
+        name: str,
+        agent: str,
+        channels: List[t.Channel],
+        recipients: List[t.CampaignRecipientInput],
+        start_at: Union[str, NotGiven] = NOT_GIVEN,
+        rate: Union[int, NotGiven] = NOT_GIVEN,
+        idempotency_key: Optional[str] = None,
+    ) -> t.Campaign:
+        """Create a campaign.
+
+        Asks an agent to contact many people. Every recipient is checked before anything is stored; the first problem is the error, and `param` points at the row (`recipients[12].phone`, `recipients[3].email`, `recipients[7]`, `recipients[0].context`, `recipients[5].contact`). Once a minute, for each running campaign, Yesly starts the next `rate` conversations as ordinary outbound conversations, only inside the agent's contact hours in live mode (test mode ignores hours). The campaign is `scheduled` until `start_at`. A recipient is either an existing contact (`contact`) or the person's details, which find or create the contact when its conversation starts. Live phone numbers must be Spanish mobiles or landlines. Send an `Idempotency-Key`: a retry then never creates two campaigns.
+
+        ``POST /campaigns``
+        """
+        return self._client._request("POST", "/campaigns", body={"name": name, "agent": agent, "channels": channels, "start_at": start_at, "rate": rate, "recipients": recipients}, idempotent=True, idempotency_key=idempotency_key)  # type: ignore[no-any-return]
+
+    def retrieve(
+        self,
+        id: str,
+    ) -> t.Campaign:
+        """Retrieve a campaign.
+
+        ``GET /campaigns/{id}``
+        """
+        return self._client._request("GET", f"/campaigns/{_quote(id)}")  # type: ignore[no-any-return]
+
+    def pause(
+        self,
+        id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+    ) -> t.Campaign:
+        """Pause a campaign.
+
+        Stops starting new conversations; the ones already started go on. Only a `scheduled`, `running` or `waiting` campaign: anything else gets `409` `campaign_not_pausable`. Keys that can write, and members, admins and owners in the dashboard.
+
+        ``POST /campaigns/{id}/pause``
+        """
+        return self._client._request("POST", f"/campaigns/{_quote(id)}/pause", idempotent=True, idempotency_key=idempotency_key)  # type: ignore[no-any-return]
+
+    def resume(
+        self,
+        id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+    ) -> t.Campaign:
+        """Resume a campaign.
+
+        Starts conversations again where the campaign left off. Only a `paused` campaign: anything else gets `409` `campaign_not_paused`.
+
+        ``POST /campaigns/{id}/resume``
+        """
+        return self._client._request("POST", f"/campaigns/{_quote(id)}/resume", idempotent=True, idempotency_key=idempotency_key)  # type: ignore[no-any-return]
+
+    def cancel(
+        self,
+        id: str,
+        *,
+        idempotency_key: Optional[str] = None,
+    ) -> t.Campaign:
+        """Cancel a campaign.
+
+        Recipients not started become `skipped`; conversations already started go on. Anything but a `cancelled` or `completed` campaign can be cancelled; those get `409` `campaign_not_cancellable`.
+
+        ``POST /campaigns/{id}/cancel``
+        """
+        return self._client._request("POST", f"/campaigns/{_quote(id)}/cancel", idempotent=True, idempotency_key=idempotency_key)  # type: ignore[no-any-return]
+
+    def list_recipients(
+        self,
+        id: str,
+        *,
+        status: Union[t.CampaignRecipientStatus, NotGiven] = NOT_GIVEN,
+        limit: Union[int, NotGiven] = NOT_GIVEN,
+        starting_after: Union[int, NotGiven] = NOT_GIVEN,
+    ) -> Page[t.CampaignRecipient]:
+        """List a campaign's recipients.
+
+        The rows in the order they were sent, row 1 first, with the conversation each one started. A row that started shows the contact's current details (`null` once the contact is erased). Unlike other lists, `starting_after` is a row number: pass the `row` of the last item received.
+
+        ``GET /campaigns/{id}/recipients``
+        """
+        return self._client._request("GET", f"/campaigns/{_quote(id)}/recipients", query={"status": status, "limit": limit, "starting_after": starting_after}, paged=True)  # type: ignore[no-any-return]
 
 
 class Messages(Resource):
@@ -485,7 +591,7 @@ class Balance(Resource):
     ) -> t.Balance:
         """Retrieve the balance.
 
-        Yesly is prepaid. Each SMS, WhatsApp message and email, and each started minute of a call that was picked up, is taken from the balance at your account's prices; calls nobody picks up are free. A message that could not be sent is refunded with an `adjustment`. A live call holds its longest cost (the agent's `max_call_minutes`) until it ends. Top-ups are made by card in the dashboard and cannot be made through the API.
+        Yesly is prepaid. The balance belongs to your organization: every account in it spends from the same one, and this endpoint returns it whichever account's key you use. Each SMS, WhatsApp message and email, and each started minute of a call that was picked up, is taken from it at your account's prices; calls nobody picks up are free. A message that could not be sent is refunded with an `adjustment`. A live call holds its longest cost (the agent's `max_call_minutes`) until it ends. Top-ups are made by card in the dashboard and cannot be made through the API.
 
         ``GET /balance``
         """
@@ -504,7 +610,7 @@ class Balance(Resource):
     ) -> Page[t.BalanceTransaction]:
         """List balance transactions.
 
-        Every charge, top-up and adjustment, newest first. Charges point to the agent, the conversation and the message, so you can pass the cost on to an order or a customer.
+        Every charge and adjustment of your account, newest first. Charges point to the agent, the conversation and the message, so you can pass the cost on to an order or a customer. Top-ups belong to the organization and are listed in the dashboard, with every account's charges.
 
         ``GET /balance/transactions``
         """
@@ -634,6 +740,7 @@ class Resources:
     senders: Senders
     contacts: Contacts
     conversations: Conversations
+    campaigns: Campaigns
     messages: Messages
     templates: Templates
     opt_outs: OptOuts
@@ -647,6 +754,7 @@ class Resources:
         self.senders = Senders(self)
         self.contacts = Contacts(self)
         self.conversations = Conversations(self)
+        self.campaigns = Campaigns(self)
         self.messages = Messages(self)
         self.templates = Templates(self)
         self.opt_outs = OptOuts(self)
